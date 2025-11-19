@@ -57,6 +57,8 @@ services:
       PORT: ${INTERNAL_PORT:-3002}
       WORKER_PORT: ${WORKER_PORT:-3005}
       ENV: production
+    ports:
+      - "3002:3002"
     depends_on:
       firecrawl-redis:
         condition: service_started
