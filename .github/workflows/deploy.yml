@@ -89,5 +89,9 @@ jobs:
             sudo systemctl disable nginx || true
             
             cd ~/
+            
+            # Login to GitHub Container Registry
+            echo ${{ secrets.GH_PAT }} | docker login ghcr.io -u ${{ secrets.GITHUB_USER }} --password-stdin
+
             docker load < firecrawl-images.tar
             docker compose -f docker-compose.prod.yml up -d --force-recreate
