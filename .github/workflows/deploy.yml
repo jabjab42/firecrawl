@@ -1,0 +1,93 @@
+name: Deploy Firecrawl to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Create .env file
+        run: |
+          echo "PORT=${{ secrets.FIRECRAWL_PORT }}" > .env
+          echo "HOST=${{ secrets.FIRECRAWL_HOST }}" >> .env
+          echo "USE_DB_AUTHENTICATION=${{ secrets.FIRECRAWL_USE_DB_AUTHENTICATION }}" >> .env
+          echo "BULL_AUTH_KEY=${{ secrets.FIRECRAWL_BULL_AUTH_KEY }}" >> .env
+          # Add any other secrets Firecrawl needs
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+
+
+      - name: Build Docker images with cache
+        run: |
+          docker buildx build \
+            --load \
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache,mode=max \
+            --tag firecrawl-nuq-postgres:latest \
+            --file ./firecrawl/apps/nuq-postgres/Dockerfile \
+            ./firecrawl/apps/nuq-postgres
+
+      - name: Save Docker images to archive
+        run: |
+          docker save firecrawl-nuq-postgres:latest -o firecrawl-images.tar
+          sudo chmod 644 firecrawl-images.tar
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "firecrawl-images.tar,docker-compose.prod.yml,.env"
+          target: "~/"
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Check if Docker is installed
+            if ! [ -x "$(command -v docker)" ]; then
+              echo "Docker is not installed. Installing..."
+              sudo apt-get update
+              sudo apt-get install -y ca-certificates curl gnupg
+              sudo install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              sudo chmod a+r /etc/apt/keyrings/docker.gpg
+              echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt-get update
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+              sudo usermod -aG docker $USER
+            fi
+            
+            # Stop any existing web server
+            sudo systemctl stop apache2 || true
+            sudo systemctl disable apache2 || true
+            sudo systemctl stop nginx || true
+            sudo systemctl disable nginx || true
+            
+            cd ~/
+            docker load < firecrawl-images.tar
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
