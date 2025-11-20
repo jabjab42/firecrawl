@@ -32,6 +32,7 @@ jobs:
           echo "BULL_AUTH_KEY=${{ secrets.FIRECRAWL_BULL_AUTH_KEY }}" >> .env
           # Add any other secrets Firecrawl needs
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          echo "AUTH_TOKEN=${{ secrets.AUTH_TOKEN }}" >> .env
 
 
       - name: Build Docker images with cache
@@ -43,10 +44,18 @@ jobs:
             --tag firecrawl-nuq-postgres:latest \
             --file ./firecrawl/apps/nuq-postgres/Dockerfile \
             ./firecrawl/apps/nuq-postgres
+            
+          docker buildx build \
+            --load \
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache,mode=max \
+            --tag firecrawl-nginx:latest \
+            --file ./nginx/Dockerfile \
+            ./nginx
 
       - name: Save Docker images to archive
         run: |
-          docker save firecrawl-nuq-postgres:latest -o firecrawl-images.tar
+          docker save firecrawl-nuq-postgres:latest firecrawl-nginx:latest -o firecrawl-images.tar
           sudo chmod 644 firecrawl-images.tar
 
       - name: Copy files to VPS
@@ -55,7 +64,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "firecrawl-images.tar,docker-compose.prod.yml,.env"
+          source: "firecrawl-images.tar,docker-compose.prod.yml,.env,nginx/"
           target: "~/"
 
       - name: Deploy to VPS via SSH
