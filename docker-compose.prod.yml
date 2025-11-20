@@ -73,8 +73,8 @@ services:
     command: redis-server --bind 0.0.0.0
 
   nuq-postgres:
-    image: firecrawl-nuq-postgres:latest # This will be built by the deploy.yml
-    pull_policy: never
+    build: ./firecrawl/apps/nuq-postgres
+    image: firecrawl-nuq-postgres:latest
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
