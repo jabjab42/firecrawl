@@ -1,4 +1,4 @@
-name: Deploy Firecrawl to VPS
+name: Deploy Firecrawl to VPS go
 
 on:
   push:
