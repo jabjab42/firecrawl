@@ -56,6 +56,8 @@ services:
       HOST: "0.0.0.0"
       PORT: ${INTERNAL_PORT:-3002}
       WORKER_PORT: ${WORKER_PORT:-3005}
+      EXTRACT_WORKER_PORT: ${EXTRACT_WORKER_PORT:-3004}
+      SCRAPE_WORKER_PORT: ${SCRAPE_WORKER_PORT:-3006}
       ENV: production
     depends_on:
       firecrawl-redis:
